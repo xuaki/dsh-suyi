@@ -51,7 +51,7 @@
 ### 前置
 
 - **DSH**（DeepSeek Harness）—— 插件宿主
-- **[dsh-mnemosyne](https://github.com/)** —— 记忆层后端，提供 SQLite 权威源与 REST API（端口 8765）
+- **[dsh-mnemosyne](https://github.com/DSH-Raising-Plan/dsh-mnemosyne)** —— 记忆层后端，提供 SQLite 权威源与 REST API（端口 8765）
 - **Python 3.12+** —— 跑 persona-memory
 - **Node.js 20+** —— 跑插件
 
@@ -170,6 +170,8 @@ cd persona-memory
 cd persona-memory
 python eval/eval_retrieval.py
 ```
+
+> 需要 persona-memory 已经在跑（127.0.0.1:8772）—— 体检是真的去打 /retrieve。
 
 会输出通过率 / 覆盖率 / 精确度 / 假阳性，并写一份 `eval/report.md`。
 `eval/questions.json` 是 **held-out 集，不要拿来调参** —— 调参用的样本和它必须是两批。
