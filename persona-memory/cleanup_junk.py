@@ -21,7 +21,7 @@ from persona_memory.mnemosyne_client import MnemosyneClient
 # --purge 模式下的保留白名单
 REAL_KEEP = (
     "老公中午睡醒了",
-    "老公说这周想去看海",
+    "用户说这周想去看海",
 )
 
 # 明确的测试/事故污染

@@ -106,8 +106,8 @@ check('registers intro section', () =>
 // ---------------- 主动提起 ----------------
 console.log('[proactive render]');
 check('recall renders summary + reason', () => {
-  const s = mod.renderRecall([{ summary: '老公说想去看海', reason: '2 天前你说的' }]);
-  assert.ok(s.includes('老公说想去看海'), s);
+  const s = mod.renderRecall([{ summary: '用户说想去看海', reason: '2 天前你说的' }]);
+  assert.ok(s.includes('用户说想去看海'), s);
   assert.ok(s.includes('2 天前你说的'), s);
   assert.ok(s.includes('不必硬提'), s);
 });
@@ -183,7 +183,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // turn/end 现在还会推一次 /promote，所以只数 /observe
 const observes = () => calls.filter((c) => c.url.includes('/observe'));
 
-emit({ type: 'user/message', seq: 1, time: Date.now(), data: { role: 'user', content: '老公说这周想去看海' } });
+emit({ type: 'user/message', seq: 1, time: Date.now(), data: { role: 'user', content: '用户说这周想去看海' } });
 await sleep(120);
 check('captures user message', () => assert.equal(observes().length, 1));
 check('user tier engage', () => assert.equal(observes()[0].body.tier, 'engage'));
@@ -304,7 +304,7 @@ check('shouldSkip: duplicate', () => {
 });
 check('shouldSkip: real content passes', () => {
   const d = fp.createDeduper();
-  assert.equal(fp.shouldSkipCapture('老公说这周想去看海，他最近太累了', d), '');
+  assert.equal(fp.shouldSkipCapture('用户说这周想去看海，他最近太累了', d), '');
 });
 
 // ---------------- 真实服务连通 ----------------

@@ -47,7 +47,7 @@ function resolveMilvusUri() {
  * 为什么需要这个：服务是 detached 拉起的，常常是管理员权限，
  * 普通终端杀不动（2026-11-07 真实撞过这堵墙）。让 DSH 自己动手是最稳的一条路。
  */
-export const EXPECTED_BUILD = '2026-11-14-harvest-inputs2';
+export const EXPECTED_BUILD = '2026-11-14-checkpoint-gate';
 
 /**
  * 默认路径：优先读环境变量，否则按「插件在 default-workspace/dsh-suyi 下」推断。

@@ -123,7 +123,7 @@ def build_service() -> tuple[PersonaMemoryService, FakeMnemosyne]:
 
 def test_summarize() -> None:
     print("[summarize]")
-    short = "老公说这周想去看海"
+    short = "用户说这周想去看海"
     check("short text unchanged", _summarize(short) == short)
 
     long_text = "今天在做一个很难的改动。" + "中间有很多细节，" * 20
@@ -149,7 +149,7 @@ def test_observe_links() -> None:
     svc, fake = build_service()
 
     # 第一条：没有邻居
-    old = "老公说这周想去看海，他最近太累了"
+    old = "用户说这周想去看海，他最近太累了"
     r1 = svc.observe(old, tier="engage", strength=0.9)
     check("first observe admitted", r1.admitted, r1.reason)
     m1 = fake.memories[r1.memory_id]
@@ -157,7 +157,7 @@ def test_observe_links() -> None:
     check("from_observation preserved", "from_observation" in m1["metadata"])
 
     # 第二条：与第一条高度相似 → 应该带 related_to 边
-    new = "老公说这周想去看海，他最近太累了呀"
+    new = "用户说这周想去看海，他最近太累了呀"
     r2 = svc.observe(new, tier="engage", strength=0.9)
     m2 = fake.memories[r2.memory_id]
     links = m2["metadata"].get("links") or []
@@ -179,7 +179,7 @@ def test_observe_links() -> None:
 def test_retrieve_inline_spill() -> None:
     print("[retrieve / inline & spill]")
     svc, fake = build_service()
-    svc.observe("老公说这周想去看海，他最近太累了", tier="engage", strength=0.9)
+    svc.observe("用户说这周想去看海，他最近太累了", tier="engage", strength=0.9)
     svc.observe("项目 deadline 压得我有点喘不过气", tier="engage", strength=0.9)
 
     r = svc.retrieve("想去看海", limit=5)
@@ -200,8 +200,8 @@ def test_retrieve_inline_spill() -> None:
 def test_expand() -> None:
     print("[expand]")
     svc, fake = build_service()
-    a = svc.observe("老公说这周想去看海，他最近太累了", tier="engage", strength=0.9)
-    svc.observe("老公说这周想去看海，他最近太累了呀", tier="engage", strength=0.9)
+    a = svc.observe("用户说这周想去看海，他最近太累了", tier="engage", strength=0.9)
+    svc.observe("用户说这周想去看海，他最近太累了呀", tier="engage", strength=0.9)
 
     e = svc.expand(a.memory_id, depth=1)
     check("expand returns content", bool(e.get("content")))
@@ -221,9 +221,9 @@ def test_expand() -> None:
 def test_invalidated_not_linked() -> None:
     print("[invalidated]")
     svc, fake = build_service()
-    a = svc.observe("老公说这周想去看海，他最近太累了", tier="engage", strength=0.9)
+    a = svc.observe("用户说这周想去看海，他最近太累了", tier="engage", strength=0.9)
     fake.memories[a.memory_id]["status"] = "invalidated"
-    r = svc.observe("老公说这周想去看海，他最近太累了呀", tier="engage", strength=0.9)
+    r = svc.observe("用户说这周想去看海，他最近太累了呀", tier="engage", strength=0.9)
     m = fake.memories[r.memory_id]
     targets = [lk["target_id"] for lk in (m["metadata"].get("links") or [])]
     check("invalidated memory not linked", a.memory_id not in targets, str(targets))
@@ -233,7 +233,7 @@ def test_proactive() -> None:
     print("[proactive]")
     svc, fake = build_service()
     r = svc.observe(
-        "老公说这周想去看海，他最近太累了",
+        "用户说这周想去看海，他最近太累了",
         tier="engage",
         strength=0.9,
         metadata={"role": "user"},

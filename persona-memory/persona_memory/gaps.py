@@ -132,10 +132,12 @@ def split_sentences(text: str) -> List[str]:
 def _is_agent_relay(line: str) -> bool:
     """这一行是不是「别的 agent 在说话」的转述，而不是人说的。
 
-    子智能体的报告通过 send_message 回到主会话时，长这样：
-      `Agent dc745f11-… sent a message: …`
-      `Background subagent … finished …`
-    它们落成 role="user"，但作者不是人。
+    例子：
+      `Agent dc745f11-… sent a message: …`（子智能体报告）
+      `Background subagent … finished …`（完成通知）
+      `This is an automatically generated checkpoint …`（会话压缩摘要，
+       它会把整段对话复述一遍——里面的「看错」「记错」是**转述**，
+       不是他此刻在纠正我。2026-11-14 实测误报过一条）
     """
     s = str(line or "").strip()
     if not s:
@@ -143,6 +145,8 @@ def _is_agent_relay(line: str) -> bool:
     if s.startswith("Agent ") and "sent a message:" in s:
         return True
     if s.startswith("Background subagent "):
+        return True
+    if s.startswith("This is an automatically generated checkpoint"):
         return True
     if s.startswith("[记忆体检结果]") or s.startswith("[诊断员"):
         return True

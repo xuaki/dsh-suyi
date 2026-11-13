@@ -80,7 +80,7 @@ def main():
     check("你刚才说错了 → strong", bool(r) and r["strength"] == "strong", str(r))
     r = detect_correction("说错了，是周四")
     check("说错了（无主语）→ strong", bool(r) and r["strength"] == "strong", str(r))
-    r = detect_correction("宝宝你老是看错时间")
+    r = detect_correction("你老是看错时间")
     check("你老是看错时间 → strong", bool(r) and r["strength"] == "strong", str(r))
 
     print("[纠正识别：弱模式]")

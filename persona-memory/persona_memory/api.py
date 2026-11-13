@@ -29,7 +29,7 @@ from .ui import PAGE
 
 # 构建戳：服务代码一改就换一个。DSH 的 bootstrap 会比对它，
 # 不一致就自己重启服务——改 Python 不用再手动杀进程（2026-11-07 加）。
-SERVICE_BUILD = "2026-11-14-harvest-inputs2"
+SERVICE_BUILD = "2026-11-14-checkpoint-gate"
 
 
 def _write_text_atomic(path: str, text: str, *, only_if_changed: bool = True) -> bool:

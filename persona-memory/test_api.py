@@ -26,7 +26,7 @@ def main() -> int:
     check("health ok", h.get("ok") is True)
     check("vector up", h.get("vector_up") is True)
 
-    text = "老公说这周想去看海，他最近太累了"
+    text = "用户说这周想去看海，他最近太累了"
     r = requests.post(
         f"{BASE}/observe",
         json={"text": text, "source_kind": "user_statement", "tier": "engage", "strength": 0.9},

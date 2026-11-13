@@ -14,7 +14,7 @@
 | 层 | 来源 | 承担什么 | 不承担什么 |
 |---|---|---|---|
 | **骨架** | [dsh-mnemosyne](https://github.com/DSH-Raising-Plan/dsh-mnemosyne)（REST 调用） | 观察/情节/候选/长期记忆、证据、状态机、SQLite 权威源 | 语义检索（它的 `vector_index` 空着） |
-| **轴** | **milvus-lite**（嵌入式本地文件）或 **内存向量索引** | 向量召回，补上那个空位 | 不做权威源，丢了不致命 |
+| **轴** | **Milvus 3.0**（本机 19530） | 向量召回，补上那个空位 | 不做权威源，丢了不致命 |
 | **体温** | [dsh-plastic-memory](https://github.com/kalozamf233/dsh-plastic-memory)（MIT，逻辑移植） | 15 种分子、情绪构建、动态状态层 | **不承载人格**（原项目用学习率×3 做过拟合，这里否决了） |
 
 人格在这里是**三层**，不是一张卡、也不是一组权重：
@@ -56,7 +56,7 @@
 
 前置：本机已有
 - `mnemosyne` 服务（本项目用 8765 跑通）
-- `milvus-lite`（嵌入式，纯本地文件，不需要 Docker）
+- `Milvus` 3.0（19530）
 
 ```powershell
 # 1) mnemosyne（在它的 service 目录下）
@@ -65,20 +65,20 @@ python -m mnemosyne.main --host 127.0.0.1 --port 8765 --token dev-token --data-d
 
 # 2) 本服务
 $env:PYTHONPATH = "persona-memory"
-python -m persona_memory.main --port 8772
+python -m persona_memory.main --port 8770
 ```
 
 ```powershell
 # 说一句话
-curl -X POST http://127.0.0.1:8772/observe -H "Content-Type: application/json" `
+curl -X POST http://127.0.0.1:8770/observe -H "Content-Type: application/json" `
   -d '{"text":"我最近有点焦虑","source_kind":"user_statement","tier":"engage"}'
 
 # 问一句话
-curl -X POST http://127.0.0.1:8772/retrieve -H "Content-Type: application/json" `
+curl -X POST http://127.0.0.1:8770/retrieve -H "Content-Type: application/json" `
   -d '{"query":"我为什么焦虑","limit":5}'
 
 # 看人格三层
-curl http://127.0.0.1:8772/persona
+curl http://127.0.0.1:8770/persona
 ```
 
 > ⚠️ **Windows 上别用 `Invoke-WebRequest` 直接发中文**：它默认按 UTF-16 发 body，
@@ -237,4 +237,4 @@ python clean_noise.py --apply    # 清理系统噪音记忆（运行时上下文
 - **`/promote` 需要跨天数据**，单次会话里跑不出晋升——这是故意的。
 - 项目当前与 mnemosyne 共用同一个 Python 环境（原型期）；
   正式部署应拆成各自 venv。
-- 向量后端默认 `milvus-lite`（嵌入式）。**不再依赖 WSL / Docker**——Milvus 服务端连不上时会自动降级到内存索引。
+- Milvus 跑在 WSL 里，WSL 休眠会断开。长期建议挪到 Windows 原生 Docker。
