@@ -1,0 +1,19 @@
+# 溯忆 · persona-memory 运行依赖
+# 装法：pip install -r requirements.txt
+# 建议用独立 venv（Python 3.11 / 3.12）
+
+# --- HTTP 服务 ---
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+
+# --- 与 mnemosyne 通信（其 HTTP API 是 REST） ---
+requests>=2.31
+
+# --- 数值（召回打分、分子计算） ---
+numpy>=1.26
+
+# --- 向量层（可选但强烈建议） ---
+# 没有 Milvus 也能跑：服务会降级到关键词检索（vector_up=false）
+pymilvus>=2.4
+fastembed>=0.3

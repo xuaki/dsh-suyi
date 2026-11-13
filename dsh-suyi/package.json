@@ -1,0 +1,35 @@
+{
+  "name": "dsh-suyi",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "溯忆 · Anamnesis：DSH 的人格与记忆融合层。人格三层（基础稳定 / 经验慢变 / 动态状态），记忆走证据链，可溯源、可纠错、可解释。",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "memory",
+    "persona",
+    "suyi",
+    "anamnesis"
+  ],
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src",
+    "cordis.patch.yml",
+    "dsh.plugin.json",
+    "README.md"
+  ],
+  "engines": {
+    "dsh": ">=0.2.0",
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "license": "MIT"
+}

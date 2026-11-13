@@ -1,0 +1,63 @@
+[
+  {
+    "q": "我们聊过 Milvus 还是 SQLite 的事？",
+    "category": "fact",
+    "expect_keywords": ["Milvus", "索引", "向量"],
+    "min_relevant": 1
+  },
+  {
+    "q": "向量索引现在用的是什么引擎？",
+    "category": "fact",
+    "expect_keywords": ["Milvus", "向量", "索引", "memory_index", "内存"],
+    "min_relevant": 1
+  },
+  {
+    "q": "焦虑和皮质醇是什么关系？",
+    "category": "fact",
+    "expect_keywords": ["焦虑", "皮质醇"],
+    "min_relevant": 1
+  },
+  {
+    "q": "子会话分级是什么？",
+    "category": "fact",
+    "expect_keywords": ["子会话", "分级"],
+    "min_relevant": 1
+  },
+  {
+    "q": "Milvus 能迁移到 docker 吗？",
+    "category": "english",
+    "expect_keywords": ["Milvus", "docker"],
+    "min_relevant": 1
+  },
+  {
+    "q": "Milvus 和 SQLite 谁是权威源？",
+    "category": "english",
+    "expect_keywords": ["SQLite", "权威源", "mnemosyne"],
+    "min_relevant": 1
+  },
+  {
+    "q": "他喜欢什么？",
+    "category": "preference",
+    "expect_keywords": ["喜欢", "兴趣", "滑雪"],
+    "min_relevant": 1
+  },
+  {
+    "q": "zzqx-9f3a",
+    "category": "noise",
+    "expect_keywords": [],
+    "expect_empty": true
+  },
+  {
+    "q": "有个完全不存在的词块 zzqx-9f3a",
+    "category": "noise",
+    "expect_keywords": [],
+    "expect_empty": true
+  },
+  {
+    "q": "Milvus 现在还能正常用吗？",
+    "category": "corrected",
+    "expect_keywords": ["坏了", "docker", "内存向量", "转移"],
+    "min_relevant": 1,
+    "expect_no_dead": true
+  }
+]

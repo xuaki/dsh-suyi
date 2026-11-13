@@ -1,0 +1,9 @@
+{
+  "name": "dsh-suyi",
+  "description": "溯忆 · Anamnesis：DSH 的人格与记忆融合层。人格三层 + 证据记忆，可溯源、可纠错。",
+  "version": "0.1.0",
+  "entry": {
+    "name": "dsh-suyi",
+    "inject": ["tools"]
+  }
+}
