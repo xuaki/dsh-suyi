@@ -75,15 +75,25 @@ const ctx = {
 
 const dispose = mod.apply(ctx);
 
-check('registers 6 tools', () => assert.equal(registered.length, 6));
-check(
-  'tool names',
-  () =>
-    assert.deepEqual(
-      registered.map((t) => t.name).sort(),
-      ['su_expand', 'su_forget', 'su_health', 'su_persona', 'su_recall', 'su_remember'],
-    ),
-);
+// 工具清单会随功能增长，断言「关键工具都在」+「数量合理」，
+// 别写死具体数字——写死了每加一个功能就得改测试（2026-11-14 之前就卡在 6）。
+check('registers a reasonable number of tools', () => assert.ok(registered.length >= 10, `实际 ${registered.length}`));
+check('core tools are present', () => {
+  const names = registered.map((t) => t.name);
+  for (const required of ['su_recall', 'su_remember', 'su_forget', 'su_health', 'su_persona']) {
+    assert.ok(names.includes(required), `缺少 ${required}`);
+  }
+});
+check('growth tools are present', () => {
+  const names = registered.map((t) => t.name);
+  for (const required of ['su_evidence', 'su_gap', 'su_interest', 'su_interest_note']) {
+    assert.ok(names.includes(required), `缺少 ${required}`);
+  }
+});
+check('no duplicate tool names', () => {
+  const names = registered.map((t) => t.name);
+  assert.equal(new Set(names).size, names.length);
+});
 check('every tool has description', () => assert.ok(registered.every((t) => (t.description || '').length > 5)));
 check('every tool has execute', () => assert.ok(registered.every((t) => typeof t.execute === 'function')));
 check('every tool has output render', () => assert.ok(registered.every((t) => typeof t.output?.render === 'function')));
@@ -98,6 +108,41 @@ check('registers state section', () =>
   ));
 check('registers intro variable', () =>
   assert.ok(promptCalls.some((c) => c.kind === 'variable' && c.name === 'suyi_recent')));
+
+// ---------------- 节奏监控 ----------------
+// 数据考古的结论：思考退化的强因子是「连续失败的重试」，不是注入量。
+// 所以这里验：连续失败到阈值才出现提示、成功一次就清零。
+console.log('[pace]');
+const paceVar = promptCalls.find((c) => c.kind === 'variable' && c.name === 'suyi_pace');
+check('registers pace variable', () => assert.ok(paceVar));
+check('registers pace section', () =>
+  assert.ok(promptCalls.some((c) => c.kind === 'section' && c.name === 'suyi-pace' && c.order === 10270)));
+
+const fakeHeader = { version: 4, id: 'pace-test', createdAt: '', isSeeded: false, delegationDepth: 0 };
+const fakeSession = { id: 'pace-test', header: fakeHeader };
+const fakeCtx = { scope: { session: { header: fakeHeader } } };
+const renderPaceNow = () => paceVar.fn(fakeCtx);
+const fireTool = (isError) =>
+  handlers['session/event'](fakeSession, {
+    type: 'tool/result',
+    data: { message: { isError, content: [{ type: 'text', text: 'x' }] } },
+  });
+
+check('pace silent before any failure', () => assert.equal(renderPaceNow(), ''));
+fireTool(true);
+check('pace still silent after 1 failure (threshold=2)', () => assert.equal(renderPaceNow(), ''));
+fireTool(true);
+check('pace appears after 2 consecutive failures', () => assert.ok(renderPaceNow().includes('连续失败 2 次')));
+fireTool(true);
+check('pace counts the 3rd failure', () => assert.ok(renderPaceNow().includes('连续失败 3 次')));
+fireTool(false);
+check('pace clears after a success', () => assert.equal(renderPaceNow(), ''));
+check('other sessions unaffected', () => {
+  const other = { scope: { session: { header: { ...fakeHeader, id: 'other-session' } } } };
+  fireTool(true);
+  fireTool(true);
+  return assert.ok(!paceVar.fn(other).includes('连续失败'));
+});
 check('registers intro section', () =>
   assert.ok(
     promptCalls.some((c) => c.kind === 'section' && c.name === 'suyi-recent' && c.text === '{{suyi_recent}}'),
@@ -253,7 +298,7 @@ check('mnemosyne def', () => {
 check('persona def', () => {
   const p = svcDefs.find((s) => s.name === 'persona-memory');
   assert.ok(p.args.includes('persona_memory.main'));
-  assert.ok(String(p.health).includes('8770'));
+  assert.ok(String(p.health).includes('8772'));
 });
 check('paths point at workspace', () => {
   const d = boot.defaultPaths();
@@ -310,7 +355,7 @@ check('shouldSkip: real content passes', () => {
 // ---------------- 真实服务连通 ----------------
 console.log('[live service]');
 const { SuyiClient } = await import(new URL('../src/client.js', import.meta.url).href);
-const client = new SuyiClient({ baseUrl: process.env.SUYI_TEST_BASE || 'http://127.0.0.1:8770' });
+const client = new SuyiClient({ baseUrl: process.env.SUYI_TEST_BASE || 'http://127.0.0.1:8772' });
 try {
   const h = await client.health();
   check('live health ok', () => assert.equal(h.ok, true));

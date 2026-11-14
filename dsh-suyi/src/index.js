@@ -736,6 +736,49 @@ export function apply(ctx) {
     return null;
   }
 
+  // ---- 节奏监控（2026-11-14）----
+  //
+  // 为什么做这个：数据考古发现，我"思考里刷「做。」「嗯，好。」"的退化
+  // **不是注入量导致的**（相关 r≈0，聚类 p=0.115），真正的强因子是
+  // **会话位置**（组内 r=0.454、大会话 r=0.803）和**连续失败的重试**。
+  // 最严重的三条 thinking 全在同一个长工具循环的尾部（Milvus Illegal uri 排查）。
+  //
+  // 所以：监测连续失败，到阈值就在**下一轮**组装提示词时顶一句"停，换思路"。
+  // 不在失败当轮喊——喊了也听不见；下一轮才开始下一步，那时候说的话才算数。
+  const paceState = new Map(); // sessionId -> { streak, at }
+
+  function trackToolResult(sessionId, data) {
+    if (!sessionId) return;
+    const msg = data?.message || {};
+    const isErr = msg.isError === true;
+    if (isErr) {
+      const cur = paceState.get(sessionId) || { streak: 0, at: 0 };
+      cur.streak += 1;
+      cur.at = Date.now();
+      paceState.set(sessionId, cur);
+      // 别无限涨：只是提示用，不是 KPI
+      if (cur.streak > 20) cur.streak = 20;
+    } else {
+      // 「连续」失败：成功一次就清零。同一个方向试了又成才算真突破。
+      paceState.delete(sessionId);
+    }
+  }
+
+  function renderPace(context) {
+    const h = sessionHeaderOf(context);
+    const sid = String(h?.id || '');
+    if (!sid) return '';
+    const st = paceState.get(sid);
+    if (!st || st.streak < 2) return '';
+    return [
+      `[节奏] 你已经连续失败 ${st.streak} 次了。`,
+      '先别做下一步。用一句话回答自己：这次失败和上一次有什么不同？',
+      '如果答不上来——说明你换的不是思路，只是运气。',
+      '那就换思路，或者直接跟他说「我卡住了，因为 X」——比继续硬试有用得多。',
+      '',
+    ].join('\n');
+  }
+
   function isDerivedHeader(h) {
     if (!looksLikeHeader(h)) return false;
     return (
@@ -793,6 +836,11 @@ export function apply(ctx) {
       recallReady = false;
       return recallCache;
     });
+    // 节奏：连续失败到阈值才出现（派生会话也要——子代理也会打转）
+    systemPrompt.variable('suyi_pace', (context) => {
+      probeContext(context);
+      return renderPace(context);
+    });
     if (typeof systemPrompt.section === 'function') {
       systemPrompt.section({
         name: 'suyi-soul',
@@ -836,6 +884,12 @@ export function apply(ctx) {
         // 他喜欢什么：偏好是慢变量，放在最后，只管「他提起时你知不知道」
         order: 10268,
         text: '{{suyi_interests}}',
+      });
+      systemPrompt.section({
+        name: 'suyi-pace',
+        // 节奏：只在连续失败时出现，所以放最靠后——它管的是「这一步别硬来」
+        order: 10270,
+        text: '{{suyi_pace}}',
       });
       systemPrompt.section({
         name: 'suyi-recent',
@@ -1091,6 +1145,12 @@ export function apply(ctx) {
       ctx.on('session/event', (session, event) => {
         try {
           const type = event?.type;
+          if (type === 'tool/result') {
+            // 节奏监控：连续失败计数（派生会话也记，子代理也会打转）
+            const sid = String(session?.id || session?.header?.id || '');
+            if (sid) trackToolResult(sid, event.data || {});
+            return;
+          }
           if (type !== 'user/message' && type !== 'assistant/message' && type !== 'turn/end') return;
 
           const sessionId = String(session?.id || session?.header?.id || '');
