@@ -36,6 +36,11 @@ export function createPressureState() {
     turn: 0,
     step: 0,
     chars: 0,
+    // 交接基线：写完后把当前值记成基线，压力从 0 重新算——
+    // 否则"交接完还在被催"（turn 是会话级的，不会因为交接而变小）。
+    baselineTurn: 0,
+    baselineStep: 0,
+    baselineChars: 0,
     // 最近一次 request/context 里看到的模型与窗口，仅用于展示
     model: '',
     contextWindow: 0,
@@ -104,10 +109,14 @@ function levelIndex(value, thresholds) {
  */
 export function pressureOf(state, thresholds = DEFAULT_THRESHOLDS) {
   if (!state) return { index: -1, level: 'low', reasons: [] };
+  // 减去交接基线：写完交接文档后，压力从零重新累积
+  const turn = Math.max(0, (Number(state.turn) || 0) - (Number(state.baselineTurn) || 0));
+  const step = Math.max(0, (Number(state.step) || 0) - (Number(state.baselineStep) || 0));
+  const chars = Math.max(0, (Number(state.chars) || 0) - (Number(state.baselineChars) || 0));
   const dims = [
-    ['轮数', state.turn, thresholds.turns],
-    ['步数', state.step, thresholds.steps],
-    ['累计字数', state.chars, thresholds.chars],
+    ['轮数', turn, thresholds.turns],
+    ['步数', step, thresholds.steps],
+    ['累计字数', chars, thresholds.chars],
   ];
   let best = -1;
   const reasons = [];
@@ -132,8 +141,11 @@ export function renderPressure(state, thresholds = DEFAULT_THRESHOLDS) {
     recommended: '建议交接了。现在多半是个干活的好时机——写一份交接文档，让新会话接着做。',
     urgent: '该交接了。再往下聊，我会开始记不清细节。先写交接文档，别硬撑。',
   };
+  const turn = Math.max(0, (Number(state.turn) || 0) - (Number(state.baselineTurn) || 0));
+  const step = Math.max(0, (Number(state.step) || 0) - (Number(state.baselineStep) || 0));
+  const chars = Math.max(0, (Number(state.chars) || 0) - (Number(state.baselineChars) || 0));
   const lines = [
-    `[工作台] ${p.level} · 当前 ${state.turn} 轮 / ${state.step} 步 / 约 ${Math.round(state.chars / 2.5 / 1000)}K 字`,
+    `[工作台] ${p.level} · 当前 ${turn} 轮 / ${step} 步 / 约 ${Math.round(chars / 2.5 / 1000)}K 字`,
   ];
   if (p.reasons.length) lines.push(`触发：${p.reasons.join('、')}`);
   const tip = tips[p.level];

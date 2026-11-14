@@ -1261,6 +1261,13 @@ export function apply(ctx) {
       });
       const dir = handoffDirOf(execCtx?.workspace || execCtx?.cwd);
       const file = saveHandoff(dir, doc, { sessionId: sid });
+      // 交接完把当前值记成基线：压力从 0 重新累积。
+      // 否则 turn 是会话级的、不会因为交接而变小，会一直催「该交接了」。
+      if (st) {
+        st.baselineTurn = st.turn;
+        st.baselineStep = st.step;
+        st.baselineChars = st.chars;
+      }
       return {
         saved: true,
         file,

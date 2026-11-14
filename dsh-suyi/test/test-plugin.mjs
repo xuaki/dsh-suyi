@@ -276,6 +276,20 @@ check('save then read latest', () => {
 check('readLatestHandoff returns null for missing dir', () => {
   return assert.equal(ho.readLatestHandoff('C:/definitely/not/a/dir/xyz'), null);
 });
+
+// 交接后压力重置（否则会一直催「该交接了」）
+check('baseline resets pressure after handoff', () => {
+  const st = { turn: 137, step: 900, chars: 600000, baselineTurn: 0, baselineStep: 0, baselineChars: 0 };
+  assert.equal(ho.pressureOf(st).level, 'urgent');
+  // 模拟 su_handoff 成功后的基线更新
+  st.baselineTurn = st.turn;
+  st.baselineStep = st.step;
+  st.baselineChars = st.chars;
+  assert.equal(ho.pressureOf(st).level, 'low');
+  // 再走 40 轮才回到 watch
+  st.turn += 40;
+  return assert.equal(ho.pressureOf(st).level, 'watch');
+});
 check('registers intro section', () =>
   assert.ok(
     promptCalls.some((c) => c.kind === 'section' && c.name === 'suyi-recent' && c.text === '{{suyi_recent}}'),
