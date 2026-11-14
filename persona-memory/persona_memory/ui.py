@@ -50,6 +50,8 @@ PAGE = r"""<!DOCTYPE html>
   .card + .card{margin-top:18px}
   .card h2{font-size:14px;margin:0 0 14px;color:var(--warm);font-weight:600;letter-spacing:1px}
   .mood{font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.9}
+  /* 「X 分钟前更新」：分子都在基线时用它区分「平静」和「断线」 */
+  .fresh{color:var(--warm);opacity:.75}
   .mood b{color:var(--text);font-weight:600}
   .mol{display:flex;flex-direction:column;gap:7px}
   .mrow{display:grid;grid-template-columns:64px 1fr 40px;gap:8px;align-items:center;font-size:12px}
@@ -188,13 +190,19 @@ async function load() {
 
 function renderHealth(h) {
   const ok = h && h.ok;
+  // 向量层可能有两套：Milvus（vector）和内存索引（memory_index）。
+  // 2026-11-14 之后 Milvus 退役，主力是内存索引——面板得跟着看它，
+  // 否则内存索引明明有 487 行，面板却显示一个横杠。
+  const vecRows = (h.memory_index && h.memory_index.rows) ||
+                  (h.vector && h.vector.rows) || 0;
+  const vecUp = h.vector_up || vecRows > 0;
   $('#health').innerHTML = `<span class="dot${ok ? '' : ' bad'}"></span>${ok ? '在线' : '离线'}` +
-    (h.vector_up ? ' · 向量层正常' : ' · 向量层降级');
+    (vecUp ? ' · 向量层正常' : ' · 向量层降级');
   const mn = h.mnemosyne || {};
   const items = [
     ['记忆', mn.memories ?? '—'],
     ['观察', mn.observations ?? '—'],
-    ['向量', (h.vector && h.vector.rows) ?? '—'],
+    ['向量', vecRows || '—'],
   ];
   $('#stats').innerHTML = items.map(([k, v]) =>
     `<div class="stat"><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join('');
@@ -217,8 +225,20 @@ function renderPersona(p) {
     const d = Math.round((v - 0.5) * 100);
     return d > 0 ? `+${d}` : String(d);
   };
+  // 「最后更新时间」：分子都停在基线时，面板看起来像死了一样——
+  // 其实只是很久没被情绪刺激（比如聊了一晚上技术）。给个时间戳，
+  // 人就能分清「平静」和「断线」。
+  const fresh = (() => {
+    const t = Number(d.last_tick_at);
+    if (!t) return '';
+    const mins = Math.round(Date.now() / 1000 - t);
+    if (mins < 1) return ' · <span class="fresh">刚刚更新</span>';
+    if (mins < 60) return ` · <span class="fresh">${mins} 分钟前更新</span>`;
+    const hrs = Math.round(mins / 60);
+    return ` · <span class="fresh">${hrs} 小时前更新</span>`;
+  })();
   $('#mood').innerHTML = `
-    唤醒 <b>${fix(eff.arousal, 2)}</b> · 效价 <b>${fix(eff.valence, 2)}</b> · 疲劳 <b>${fix(d.fatigue, 2)}</b><br>
+    唤醒 <b>${fix(eff.arousal, 2)}</b> · 效价 <b>${fix(eff.valence, 2)}</b> · 疲劳 <b>${fix(d.fatigue, 2)}</b>${fresh}<br>
     情绪偏离（0 = 平时的你 · ±50 = 顶格 · 只列前 3）：${topEmo.map(([k, v]) => `<b>${esc(EMOTION_ZH[k] || k)}</b> ${dev(v)}`).join(' · ') || '—'}`;
 
   const mols = d.molecules || {};

@@ -561,6 +561,10 @@ class PersonaState:
             "shaped": {k: v.to_dict() for k, v in self.shaped.items()},
             "dynamic": {
                 "fatigue": round(self.dynamic.fatigue, 4),
+                # 最后 tick 时间：面板用它判断"数据是新鲜的"还是"失联了"。
+                # 2026-11-14：分子全在基线时，看板看起来像死了一样——
+                # 其实只是很久没有情绪刺激。给个时间戳，人就能分清"平静"和"断线"。
+                "last_tick_at": round(self.dynamic.last_tick_at, 1),
                 "effects": {
                     k: (round(v, 4) if isinstance(v, float) else v)
                     for k, v in self.effects().items()
