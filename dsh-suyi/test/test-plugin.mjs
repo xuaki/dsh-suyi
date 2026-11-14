@@ -277,7 +277,17 @@ check('readLatestHandoff returns null for missing dir', () => {
   return assert.equal(ho.readLatestHandoff('C:/definitely/not/a/dir/xyz'), null);
 });
 
-// 交接后压力重置（否则会一直催「该交接了」）
+// 重启后不该立刻判 urgent（turn 是会话级的，会继承 138）
+check('startup baseline prevents instant urgent after restart', () => {
+  const st = ho.createPressureState();
+  // 模拟重启后第一条事件：会话已经 138 轮
+  ho.trackEvent(st, { type: 'turn/start', data: { turn: 138 } });
+  assert.equal(st.startupTurn, 138, 'startup baseline should latch the inherited turn');
+  assert.equal(ho.pressureOf(st).level, 'low', 'fresh process on a long session must start low');
+  // 从这里再走 40 轮才 watch
+  ho.trackEvent(st, { type: 'turn/start', data: { turn: 178 } });
+  return assert.equal(ho.pressureOf(st).level, 'watch');
+});
 check('baseline resets pressure after handoff', () => {
   const st = { turn: 137, step: 900, chars: 600000, baselineTurn: 0, baselineStep: 0, baselineChars: 0 };
   assert.equal(ho.pressureOf(st).level, 'urgent');
