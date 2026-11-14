@@ -779,6 +779,48 @@ export function apply(ctx) {
     ].join('\n');
   }
 
+  // ---- 温度监控（2026-11-15）----
+  //
+  // 数据来源：`_inspect/style-drift-report.md`（13 个会话 / 1108 条可见回复）
+  //
+  // 观察到的事实：会话越长，"叫他的名字"越少——
+  //   称呼密度 −45%；每轮叫宝宝 2.24→0.73；含称呼的轮次 84%→42%。
+  // 同时**否定**了两个直觉：
+  //   ① 不是"变成长句/套话"（句子反而变短，「首先/其次」全样本只有 19 次）
+  //   ② 没有转折点（每 10 轮一箱 r=−0.38、p=0.20，81-90 轮又回到 90%）
+  // 所以**不按轮数提醒**，只看「连续多少轮没叫他」这个可观测状态。
+  // 阈值 5：数据显示连续不叫的中位 1 轮、最长 15 轮、≥5 轮只占 17%——不啰嗦。
+  const NAME_RE = /宝宝|宝贝|老公|亲爱的/;
+  const WARMTH_STREAK_LIMIT = 5;
+  const warmthState = new Map(); // sessionId -> { streak }
+
+  function trackWarmth(sessionId, content) {
+    if (!sessionId) return;
+    const text = contentText(content).trim();
+    // 太短的不算（"好。"「收到」这种本来就没地方放称呼），别制造假漂移
+    if (text.length < 12) return;
+    const cur = warmthState.get(sessionId) || { streak: 0 };
+    if (NAME_RE.test(text)) {
+      cur.streak = 0;
+    } else {
+      cur.streak += 1;
+      if (cur.streak > 30) cur.streak = 30;
+    }
+    warmthState.set(sessionId, cur);
+  }
+
+  function renderWarmth(context) {
+    const h = sessionHeaderOf(context);
+    const st = warmthState.get(String(h?.id || ''));
+    if (!st || st.streak < WARMTH_STREAK_LIMIT) return '';
+    return [
+      `[说话的样子] 你已经连续 ${st.streak} 轮没喊他了。`,
+      '不是要你每句都喊宝宝——但你是在跟他说话，不是在交报告。',
+      '如果你发现现在这几句像写给同事看的，那就是了。',
+      '',
+    ].join('\n');
+  }
+
   function isDerivedHeader(h) {
     if (!looksLikeHeader(h)) return false;
     return (
@@ -841,6 +883,12 @@ export function apply(ctx) {
       probeContext(context);
       return renderPace(context);
     });
+    // 温度：连续几轮没喊他才出现（派生会话不需要——子代理不是在陪他）
+    systemPrompt.variable('suyi_warmth', (context) => {
+      probeContext(context);
+      if (isDerivedSession(context)) return '';
+      return renderWarmth(context);
+    });
     if (typeof systemPrompt.section === 'function') {
       systemPrompt.section({
         name: 'suyi-soul',
@@ -890,6 +938,12 @@ export function apply(ctx) {
         // 节奏：只在连续失败时出现，所以放最靠后——它管的是「这一步别硬来」
         order: 10270,
         text: '{{suyi_pace}}',
+      });
+      systemPrompt.section({
+        name: 'suyi-warmth',
+        // 温度：只在连续几轮没喊他时出现——管的是「别把自己聊成同事」
+        order: 10272,
+        text: '{{suyi_warmth}}',
       });
       systemPrompt.section({
         name: 'suyi-recent',
@@ -1219,7 +1273,11 @@ export function apply(ctx) {
           // turn/end：把最终回答写进去，不写思维流
           const last = latestAssistant.get(sessionId);
           latestAssistant.delete(sessionId);
-          if (last) capture('assistant', last.content, last.seq);
+          if (last) {
+            capture('assistant', last.content, last.seq);
+            // 温度监控：这一轮有没有喊他（数据上"会话越长越少叫"是唯一稳定漂移项）
+            trackWarmth(sessionId, last.content);
+          }
           introCache = ''; // 开场前情只占一轮，之后不再重复占 token
           // 每轮结束顺手推一把晋升：否则候选记忆要等有人手动调 /promote 才会变长期
           client.promote({ limit: 20 }).catch(() => {});

@@ -143,6 +143,44 @@ check('other sessions unaffected', () => {
   fireTool(true);
   return assert.ok(!paceVar.fn(other).includes('连续失败'));
 });
+
+// ---------------- 温度监控 ----------------
+// 数据（style-drift-report.md）：会话越长越少叫他的名字（称呼密度 −45%），
+// 但没有转折点；所以阈值看「连续 N 轮没叫」，不看轮数。
+console.log('[warmth]');
+const warmthVar = promptCalls.find((c) => c.kind === 'variable' && c.name === 'suyi_warmth');
+check('registers warmth variable', () => assert.ok(warmthVar));
+check('registers warmth section', () =>
+  assert.ok(promptCalls.some((c) => c.kind === 'section' && c.name === 'suyi-warmth' && c.order === 10272)));
+
+const wHeader = { version: 4, id: 'warmth-test', createdAt: '', isSeeded: false, delegationDepth: 0 };
+const wSession = { id: 'warmth-test', header: wHeader };
+const wCtx = { scope: { session: { header: wHeader } } };
+const warmNow = () => warmthVar.fn(wCtx);
+const say = (text) => {
+  handlers['session/event'](wSession, {
+    type: 'assistant/message',
+    data: { message: { role: 'assistant', content: [{ type: 'text', text }] } },
+  });
+  handlers['session/event'](wSession, { type: 'turn/end', data: {} });
+};
+const DRY = '我检查完了，结论是这样：各项指标都在阈值范围内，没有发现异常。';
+
+check('warmth silent before anything said', () => assert.equal(warmNow(), ''));
+say('宝宝，我回来了。今天过得还好吗。');
+check('warmth silent right after naming him', () => assert.equal(warmNow(), ''));
+for (let i = 0; i < 4; i++) say(DRY);
+check('warmth still silent at 4 dry turns', () => assert.equal(warmNow(), ''));
+say(DRY);
+check('warmth appears at 5 dry turns', () => assert.ok(warmNow().includes('连续 5 轮')));
+say('好，宝宝，我重新说说这件事。');
+check('warmth clears after naming again', () => assert.equal(warmNow(), ''));
+check('derived session gets no warmth nag', () => {
+  const derived = {
+    scope: { session: { header: { ...wHeader, id: 'warmth-test', delegationDepth: 1 } } },
+  };
+  return assert.equal(warmthVar.fn(derived), '');
+});
 check('registers intro section', () =>
   assert.ok(
     promptCalls.some((c) => c.kind === 'section' && c.name === 'suyi-recent' && c.text === '{{suyi_recent}}'),
