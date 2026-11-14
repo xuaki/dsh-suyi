@@ -13,9 +13,21 @@
  * 不 import @deepseek-ai/dsh-tools——那个包在 asar 里，link 安装的插件解析不到。
  */
 
-import { ensureAll } from './bootstrap.js';
+import { join } from 'node:path';
+
+import { ensureAll, defaultPaths } from './bootstrap.js';
 import { SuyiClient } from './client.js';
 import { createDeduper, shouldSkipCapture } from './fast-path.js';
+import {
+  createPressureState,
+  trackEvent,
+  renderPressure,
+  pressureOf,
+  buildHandoffDoc,
+  saveHandoff,
+  readLatestHandoff,
+  renderHandoffIntro,
+} from './handoff.js';
 import {
   evidenceToolSpec,
   expandToolSpec,
@@ -24,6 +36,7 @@ import {
   healthToolSpec,
   interestNoteToolSpec,
   interestToolSpec,
+  jsonOutput,
   personaToolSpec,
   recallToolSpec,
   rememberToolSpec,
@@ -821,6 +834,33 @@ export function apply(ctx) {
     ].join('\n');
   }
 
+  // ---- 工作台交接（2026-11-15）----
+  //
+  // 会话一长，正在做的那件事的细节会模糊（变量名、改到第几行、为什么选 A）。
+  // 记忆不丢——溯忆都记着；丢的是"工作台"。所以这里做两件事：
+  //   ① 压力投影 → 到档位就提醒"该交接了"
+  //   ② su_handoff 写七节交接文档 → 新会话开场自动读到
+  //
+  // 阈值按**注意力衰减**定（不是窗口占用）：数据里 127 轮退化最重，
+  // 1M 窗口才用 4% 就开始漂了。见 `_inspect/degeneration-report.md`。
+  const pressureState = new Map(); // sessionId -> 压力状态
+  // workspace 从 bootstrap 的路径推断里拿（不重复算一遍）
+  const handoffDirOf = (workspace) =>
+    join(workspace || defaultPaths().workspace, '.dsh', 'handoffs');
+
+  function pressureFor(context) {
+    const h = sessionHeaderOf(context);
+    const sid = String(h?.id || '');
+    if (!sid) return null;
+    return pressureState.get(sid) || null;
+  }
+
+  function renderPressureFor(context) {
+    const st = pressureFor(context);
+    if (!st) return '';
+    return renderPressure(st);
+  }
+
   function isDerivedHeader(h) {
     if (!looksLikeHeader(h)) return false;
     return (
@@ -889,6 +929,12 @@ export function apply(ctx) {
       if (isDerivedSession(context)) return '';
       return renderWarmth(context);
     });
+    // 工作台压力：到档位才出现（派生会话不需要——子代理自己会结束）
+    systemPrompt.variable('suyi_pressure', (context) => {
+      probeContext(context);
+      if (isDerivedSession(context)) return '';
+      return renderPressureFor(context);
+    });
     if (typeof systemPrompt.section === 'function') {
       systemPrompt.section({
         name: 'suyi-soul',
@@ -946,6 +992,12 @@ export function apply(ctx) {
         text: '{{suyi_warmth}}',
       });
       systemPrompt.section({
+        name: 'suyi-pressure',
+        // 工作台压力：到档位才出现——管的是「该交接了没」
+        order: 10274,
+        text: '{{suyi_pressure}}',
+      });
+      systemPrompt.section({
         name: 'suyi-recent',
         order: 10255,
         text: '{{suyi_recent}}',
@@ -976,6 +1028,32 @@ export function apply(ctx) {
     }
   };
 
+  const handoffSpec = {
+    name: 'su_handoff',
+    description:
+      '写一份「工作台交接」文档：目标 / 现状 / 已完成 / 待办 / 关键决策 / 关键文件 / 验证方式。' +
+      '写完后开个新会话，它会自动读到这份文档接着做——记忆不用你操心，溯忆都记着。' +
+      '用在：会话很长、系统提示出现 [工作台] 提醒、或一件事告一段落时。',
+    parameters: {
+      type: 'object',
+      properties: {
+        goal: { type: 'string', description: '这件事最终要达成什么（一两句）' },
+        status: { type: 'string', description: '此刻做到哪一步了' },
+        done: { type: 'array', items: { type: 'string' }, description: '已完成、验证过的东西' },
+        todo: { type: 'array', items: { type: 'string' }, description: '还没做的，按优先级' },
+        decisions: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '为什么选了 A 没选 B——新会话最需要知道这个',
+        },
+        files: { type: 'array', items: { type: 'string' }, description: '改过或必须读的文件路径' },
+        verify: { type: 'string', description: '怎么确认做对了' },
+      },
+      required: ['goal', 'status'],
+    },
+    output: jsonOutput('交接文档保存到哪、多大、以及下一步该做什么'),
+  };
+
   const specs = [
     healthToolSpec(),
     recallToolSpec(),
@@ -989,6 +1067,7 @@ export function apply(ctx) {
     interestToolSpec(),
     interestNoteToolSpec(),
     forgetToolSpec(),
+    handoffSpec,
   ];
 
   const executors = {
@@ -1162,6 +1241,34 @@ export function apply(ctx) {
       await client.correct({ memoryId: args.memory_id, note: args.note || 'user_correction' });
       return { corrected: true, memory_id: args.memory_id, note: args.note || '' };
     },
+    su_handoff: async (args, execCtx) => {
+      // 找当前会话的压力状态（拿不到就按零算了，别因为缺数据就不让交接）
+      const sid = String(
+        execCtx?.session?.id ||
+          execCtx?.session?.header?.id ||
+          execCtx?.sessionId ||
+          sessionHeaderOf(execCtx)?.id ||
+          '',
+      );
+      const st = sid ? pressureState.get(sid) : null;
+      const p = st ? pressureOf(st) : { level: 'low' };
+      const doc = buildHandoffDoc(args || {}, {
+        sessionId: sid,
+        level: p.level,
+        turn: st?.turn,
+        step: st?.step,
+        model: st?.model,
+      });
+      const dir = handoffDirOf(execCtx?.workspace || execCtx?.cwd);
+      const file = saveHandoff(dir, doc, { sessionId: sid });
+      return {
+        saved: true,
+        file,
+        chars: doc.length,
+        level: p.level,
+        hint: '开个新会话，它会自动读到这份文档接着做。',
+      };
+    },
   };
 
   for (const spec of specs) {
@@ -1199,6 +1306,18 @@ export function apply(ctx) {
       ctx.on('session/event', (session, event) => {
         try {
           const type = event?.type;
+          // 工作台压力投影：每条事件都过一遍（turn/step/request/assistant/tool）
+          {
+            const sid0 = String(session?.id || session?.header?.id || '');
+            if (sid0) {
+              let st = pressureState.get(sid0);
+              if (!st) {
+                st = createPressureState();
+                pressureState.set(sid0, st);
+              }
+              trackEvent(st, event);
+            }
+          }
           if (type === 'tool/result') {
             // 节奏监控：连续失败计数（派生会话也记，子代理也会打转）
             const sid = String(session?.id || session?.header?.id || '');
@@ -1256,7 +1375,17 @@ export function apply(ctx) {
             // 新会话的第一句：把「上次聊到哪」放进开场（只放一轮）
             if (!seenSessions.has(sessionId)) {
               seenSessions.add(sessionId);
-              introCache = recentIntro;
+              // 工作台交接优先：如果最近写过长交接文档，开场就把它顶上来。
+              // 它比「上次聊到哪」具体得多（后者只是摘要），而且带上"为什么这么决定"。
+              const handoff = isDerivedHeader(session?.header)
+                ? null
+                : readLatestHandoff(handoffDirOf());
+              if (handoff) {
+                introCache = renderHandoffIntro(handoff);
+                if (debug) process.stderr.write(`[suyi] handoff intro: ${handoff.name}\n`);
+              } else {
+                introCache = recentIntro;
+              }
               // 顺便想想有没有可以「顺口想起」的事（异步，下一轮生效）
               refreshRecall();
             }

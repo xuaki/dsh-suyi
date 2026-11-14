@@ -6,6 +6,9 @@
  * 最后用真实服务验一次连通。
  */
 import assert from 'node:assert';
+import fsm from 'node:fs';
+import os from 'node:os';
+import p from 'node:path';
 
 const mod = await import(new URL('../src/index.js', import.meta.url).href);
 const boot = await import(new URL('../src/bootstrap.js', import.meta.url).href);
@@ -180,6 +183,98 @@ check('derived session gets no warmth nag', () => {
     scope: { session: { header: { ...wHeader, id: 'warmth-test', delegationDepth: 1 } } },
   };
   return assert.equal(warmthVar.fn(derived), '');
+});
+
+// ---------------- 工作台交接 ----------------
+console.log('[handoff]');
+import * as ho from '../src/handoff.js';
+
+check('su_handoff tool registered', () => assert.ok(registered.some((t) => t.name === 'su_handoff')));
+check('registers pressure variable', () =>
+  assert.ok(promptCalls.some((c) => c.kind === 'variable' && c.name === 'suyi_pressure')));
+check('registers pressure section', () =>
+  assert.ok(promptCalls.some((c) => c.kind === 'section' && c.name === 'suyi-pressure' && c.order === 10274)));
+
+// 压力投影
+check('pressure starts empty', () => {
+  const st = ho.createPressureState();
+  return assert.equal(st.turn, 0) || assert.equal(ho.pressureOf(st).level, 'low');
+});
+check('tracks turn/step/assistant chars', () => {
+  const st = ho.createPressureState();
+  ho.trackEvent(st, { type: 'turn/start', data: { turn: 5 } });
+  ho.trackEvent(st, { type: 'step/start', data: { turn: 5, step: 20 } });
+  ho.trackEvent(st, {
+    type: 'assistant/message',
+    data: { message: { role: 'assistant', content: [{ type: 'text', text: 'x'.repeat(500) }] } },
+  });
+  assert.equal(st.turn, 5);
+  assert.equal(st.step, 20);
+  assert.ok(st.chars >= 500, `chars=${st.chars}`);
+});
+
+// 分级
+check('level low below first threshold', () => {
+  const st = { turn: 10, step: 10, chars: 0 };
+  return assert.equal(ho.pressureOf(st).level, 'low');
+});
+check('level watch at 40 turns', () => {
+  const st = { turn: 40, step: 10, chars: 0 };
+  return assert.equal(ho.pressureOf(st).level, 'watch');
+});
+check('level recommended at 70 turns', () => {
+  const st = { turn: 70, step: 10, chars: 0 };
+  return assert.equal(ho.pressureOf(st).level, 'recommended');
+});
+check('level urgent at 100 turns', () => {
+  const st = { turn: 100, step: 10, chars: 0 };
+  return assert.equal(ho.pressureOf(st).level, 'urgent');
+});
+check('level takes the max of dimensions', () => {
+  const st = { turn: 5, step: 5, chars: 160000 }; // 只靠字数到 watch
+  return assert.equal(ho.pressureOf(st).level, 'watch');
+});
+check('renderPressure empty when low', () =>
+  assert.equal(ho.renderPressure({ turn: 1, step: 1, chars: 0 }), ''));
+check('renderPressure has level when watch', () =>
+  assert.ok(ho.renderPressure({ turn: 45, step: 10, chars: 0 }).includes('watch')));
+
+// 文档结构
+check('buildHandoffDoc includes all provided sections', () => {
+  const doc = ho.buildHandoffDoc(
+    { goal: '做完交接', status: '写了一半', done: ['a', 'b'], todo: ['c'], files: ['x.js'], verify: '跑测试' },
+    { turn: 50, step: 300, level: 'recommended', sessionId: 's1' },
+  );
+  for (const h of ['目标', '现状', '已完成', '待办', '关键文件', '验证方式']) {
+    assert.ok(doc.includes(`## ${h}`), `缺少 ${h}`);
+  }
+  return assert.ok(doc.includes('- a') && doc.includes('- b'));
+});
+check('buildHandoffDoc omits empty sections', () => {
+  const doc = ho.buildHandoffDoc({ goal: 'x', status: 'y' }, {});
+  return assert.ok(!doc.includes('## 关键文件'));
+});
+
+// 存取往返
+check('save then read latest', () => {
+  const dir = fsm.mkdtempSync(p.join(os.tmpdir(), 'handoff-test-'));
+  try {
+    const doc = ho.buildHandoffDoc({ goal: 'g', status: 's' }, { sessionId: 'abc' });
+    const f1 = ho.saveHandoff(dir, doc, { sessionId: 'abc', at: Date.now() - 60000 });
+    const f2 = ho.saveHandoff(dir, doc + '\n更新', { sessionId: 'abc', at: Date.now() });
+    assert.ok(f1 && f2);
+    const latest = ho.readLatestHandoff(dir);
+    assert.ok(latest, 'should find latest');
+    assert.ok(latest.content.includes('更新'), 'should be the newest');
+    const intro = ho.renderHandoffIntro(latest);
+    assert.ok(intro.includes('[工作台交接]'));
+    return assert.ok(intro.includes('## 目标'));
+  } finally {
+    fsm.rmSync(dir, { recursive: true, force: true });
+  }
+});
+check('readLatestHandoff returns null for missing dir', () => {
+  return assert.equal(ho.readLatestHandoff('C:/definitely/not/a/dir/xyz'), null);
 });
 check('registers intro section', () =>
   assert.ok(
